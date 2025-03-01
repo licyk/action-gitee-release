@@ -69,6 +69,35 @@ class Gitee:
         else:
             return False, "No 'id' in response"
 
+    def get_exist_file_id(self, repo, release_id, file_name):
+        url = f'https://gitee.com/api/v5/repos/{self.owner}/{repo}/releases/{release_id}/attach_files'
+        file_id_list = []
+        data = {
+            'access_token': self.token,
+        }
+        response = requests.get(url, data=data)
+        res = response.json()
+        if response.status_code < 200 or response.status_code > 300:
+            return file_id_list
+
+        for key in res:
+            if key.get("name") == file_name:
+                file_id_list.append(key.get("id"))
+
+        return file_id_list
+
+    def delete_exist_file(self, repo, release_id, file_name):
+        data = {
+            'access_token': self.token,
+        }
+        file_id_list = self.get_exist_file_id(repo, release_id, file_name)
+        for attach_file_id in file_id_list:
+            print(f"delete exist file: {file_name}, id: {attach_file_id}")
+            url = f'https://gitee.com/api/v5/repos/{self.owner}/{repo}/releases/{release_id}/attach_files/{attach_file_id}'
+            response = requests.delete(url, data=data)
+            if response.status_code < 200 or response.status_code > 300:
+                print("delete release exist file failed: {}".format(f"Response status_code is {response.status_code}"))
+
     @Retry(retry_times)
     def upload_asset(self, repo, release_id, files = None, file_name = None, file_path = None):
         if files:
@@ -78,10 +107,12 @@ class Gitee:
                 file_path = file_path.strip()
                 if not os.path.isfile(file_path):
                     raise ValueError('file_path not exists: ' + file_path)
+                self.delete_exist_file(repo, release_id, os.path.basename(file_path))
                 file = ('file', (os.path.basename(file_path), open(file_path, 'rb'), 'application/octet-stream'))
                 idx = idx + 1
                 fields.append(file)
         elif file_name and file_path:
+            self.delete_exist_file(repo, release_id, os.path.basename(file_name))
             fields = {
                 'access_token': self.token,
                 'file': (file_name, open(file_path, 'rb'), 'application/octet-stream'),
